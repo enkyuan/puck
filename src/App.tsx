@@ -5,7 +5,7 @@ import { Progress } from '@base-ui/react/progress'
 import { Minus, Plus } from 'blode-icons-react'
 import { Bottle } from './components/Bottle'
 import { useMicrobit } from './state/microbit'
-import { AMOUNTS, GOAL_OZ, fillFraction, loadState, reducer, saveState, totalOz } from './state/logger'
+import { AMOUNTS, GOAL_OZ, fillFraction, loadState, remainingOz, reducer, saveState, totalOz } from './state/logger'
 import { colors, fonts, shadows } from './tokens.stylex'
 
 const number = new Intl.NumberFormat()
@@ -77,6 +77,7 @@ const s = stylex.create({
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, loadState)
   const total = totalOz(state.entries)
+  const left = remainingOz(total)
 
   const microbit = useMicrobit(() => dispatch({ type: 'add' }))
 
@@ -86,8 +87,8 @@ export default function App() {
     <main aria-label="Puck" {...stylex.props(s.page)}>
       <div {...stylex.props(s.column)}>
         <Progress.Root
-          aria-label="Water logged today"
-          value={Math.min(total, GOAL_OZ)}
+          aria-label="Water left to drink today"
+          value={left}
           max={GOAL_OZ}
           {...stylex.props(s.bottle)}
         >
@@ -96,13 +97,13 @@ export default function App() {
 
         <p {...stylex.props(s.readout)}>
           <span aria-live="polite">
-            <span {...stylex.props(s.num, s.mono, s.total)}>{number.format(total)}</span>{' '}
+            <span {...stylex.props(s.num, s.mono, s.total)}>{number.format(left)}</span>{' '}
             <span {...stylex.props(s.goal)}>
-              {total >= GOAL_OZ ? (
-                'fl oz, goal reached'
+              {left === 0 ? (
+                'fl oz left, goal reached'
               ) : (
                 <>
-                  of <span {...stylex.props(s.num)}>{number.format(GOAL_OZ)}</span> fl oz
+                  of <span {...stylex.props(s.num)}>{number.format(GOAL_OZ)}</span> fl oz left
                 </>
               )}
             </span>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { BOTTOM, TOP, levelAt } from '../src/components/bottles'
-import { pressDetector } from '../src/state/press'
+import { isPress } from '../src/state/press'
 import { AMOUNTS, fillFraction, initialState, reducer, totalOz, type Action } from '../src/state/logger'
 
 const run = (...actions: Action[]) => actions.reduce(reducer, initialState)
@@ -27,10 +27,10 @@ describe('logging', () => {
     expect(run({ type: 'undo' }).entries).toEqual([])
   })
 
-  test('fillFraction is clamped to the bottle', () => {
-    expect(fillFraction(0)).toBe(0)
+  test('the bottle starts full and drains to empty at the goal', () => {
+    expect(fillFraction(0)).toBe(1)
     expect(fillFraction(32)).toBe(0.5)
-    expect(fillFraction(100)).toBe(1)
+    expect(fillFraction(100)).toBe(0)
   })
 })
 
@@ -56,21 +56,17 @@ describe('bottle fill', () => {
 })
 
 describe('micro:bit', () => {
-  const presses = (lines: string[]) => {
-    const isPress = pressDetector()
-    return lines.filter(isPress).length
-  }
-
-  test('logs once per press, not once per reading while held', () => {
-    expect(presses(['1', '1', '0', '0', '0', '1', '1', '0', '1'])).toBe(2)
+  test('counts each "You just drank" line from the receiver, once per release', () => {
+    const lines = [
+      '\x1b[H\x1b[2JYou just drank 4 ounces of water!',
+      "You've now drank 4 ounces of water",
+      '\x1b[H\x1b[2JYou just drank 2 ounces of water!',
+      "You've now drank 6 ounces of water",
+    ]
+    expect(lines.filter(isPress).length).toBe(2)
   })
 
-  test('ignores a contact already closed at connect, and garbled lines', () => {
-    expect(presses(['0', '0', '1', '0'])).toBe(1)
-    expect(presses(['1', '', 'x1', '0', '\r0\r', '0'])).toBe(1)
-  })
-
-  test('accepts the radio messages from a receiver micro:bit', () => {
-    expect(presses(['not pressed', 'pressed', 'pressed', 'not pressed', 'pressed'])).toBe(2)
+  test('ignores partial or garbled lines', () => {
+    expect([' water', '', 'x1', '0'].filter(isPress).length).toBe(0)
   })
 })

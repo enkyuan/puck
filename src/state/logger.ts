@@ -14,7 +14,9 @@ export const initialState: State = { amount: 8, entries: [] }
 
 export const totalOz = (entries: readonly number[]) => entries.reduce((sum, oz) => sum + oz, 0)
 
-export const fillFraction = (total: number) => Math.min(1, total / GOAL_OZ)
+// The bottle starts full and drains toward the goal.
+export const remainingOz = (total: number) => Math.max(0, GOAL_OZ - total)
+export const fillFraction = (total: number) => remainingOz(total) / GOAL_OZ
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {

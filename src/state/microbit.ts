@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { pressDetector } from './press'
+import { DAPLink, WebUSB } from 'dapjs'
+import { isPress } from './press'
 
-// Minimal Web Serial typings (Chromium only; needs HTTPS or localhost).
-type Port = {
-  readable: ReadableStream<BufferSource> | null
-  open(options: { baudRate: number }): Promise<void>
-  getInfo(): { usbVendorId?: number }
-}
-type Serial = {
-  getPorts(): Promise<Port[]>
-  requestPort(options: { filters: { usbVendorId: number }[] }): Promise<Port>
+// Minimal WebUSB typings (Chromium only; needs HTTPS or localhost).
+type UsbDevice = { vendorId: number }
+type Usb = {
+  getDevices(): Promise<UsbDevice[]>
+  requestDevice(options: { filters: { vendorId: number }[] }): Promise<UsbDevice>
+  addEventListener(type: 'disconnect', listener: (e: { device: UsbDevice }) => void): void
+  removeEventListener(type: 'disconnect', listener: (e: { device: UsbDevice }) => void): void
 }
 
 const MICROBIT = 0x0d28 // USB vendor id
-const serial = (navigator as unknown as { serial?: Serial }).serial
+const usb = (navigator as unknown as { usb?: Usb }).usb
 
+// Reads the micro:bit's serial output through its DAPLink interface (the same route
+// the micro:bit Python editor uses), so the OS never has to hand over a serial port.
 export function useMicrobit(onPress: () => void) {
   const [connected, setConnected] = useState(false)
   const latest = useRef(onPress)
@@ -22,39 +23,43 @@ export function useMicrobit(onPress: () => void) {
     latest.current = onPress
   })
 
-  async function listen(port: Port) {
-    await port.open({ baudRate: 115200 })
+  async function listen(device: UsbDevice) {
+    const link = new DAPLink(new WebUSB(device as unknown as USBDevice))
+    await link.connect()
+    await link.setSerialBaudrate(115200)
     setConnected(true)
-    const isPress = pressDetector()
-    const reader = port.readable!.pipeThrough(new TextDecoderStream()).getReader()
+
     let buffer = ''
-    try {
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        const lines = (buffer + value).split('\n')
-        buffer = lines.pop()! // keep the partial last line
-        for (const line of lines) if (isPress(line)) latest.current()
-      }
-    } finally {
-      setConnected(false) // unplugged
+    const onData = (chunk: string) => {
+      const lines = (buffer + chunk).split('\n')
+      buffer = lines.pop()! // keep the partial last line
+      for (const line of lines) if (isPress(line)) latest.current()
     }
+    const onUnplug = (e: { device: UsbDevice }) => {
+      if (e.device !== device) return
+      link.stopSerialRead()
+      setConnected(false)
+      usb?.removeEventListener('disconnect', onUnplug)
+    }
+    usb?.addEventListener('disconnect', onUnplug)
+    link.on(DAPLink.EVENT_SERIAL_DATA, onData)
+    await link.startSerialRead(50, false) // runs until stopSerialRead()
   }
 
   // Reconnect to a micro:bit the user already allowed, without another prompt.
   useEffect(() => {
-    serial
-      ?.getPorts()
-      .then((ports) => ports.find((p) => p.getInfo().usbVendorId === MICROBIT))
-      .then((port) => port && listen(port))
+    usb
+      ?.getDevices()
+      .then((devices) => devices.find((d) => d.vendorId === MICROBIT))
+      .then((device) => device && listen(device))
       .catch(() => {})
   }, [])
 
   const connect = () =>
-    serial
-      ?.requestPort({ filters: [{ usbVendorId: MICROBIT }] })
+    usb
+      ?.requestDevice({ filters: [{ vendorId: MICROBIT }] })
       .then(listen)
-      .catch(() => {}) // the user closed the picker, or the port is already open
+      .catch(() => {}) // the user closed the picker, or another tab holds the device
 
-  return { supported: serial !== undefined, connected, connect }
+  return { supported: usb !== undefined, connected, connect }
 }
