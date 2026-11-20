@@ -5,7 +5,7 @@ import { Progress } from '@base-ui/react/progress'
 import { Minus, Plus } from 'blode-icons-react'
 import { Bottle } from './components/Bottle'
 import { useMicrobit } from './state/microbit'
-import { AMOUNTS, GOAL_OZ, fillFraction, loadState, remainingOz, reducer, saveState, totalOz } from './state/logger'
+import { CAPACITIES, fillFraction, loadState, remainingOz, reducer, saveState, totalOz } from './state/logger'
 import { colors, fonts, shadows } from './tokens.stylex'
 
 const number = new Intl.NumberFormat()
@@ -62,13 +62,14 @@ const s = stylex.create({
     backgroundColor: { default: 'transparent', ':hover': colors.accentSoft },
     opacity: { default: 1, ':disabled': 0.35 },
   },
-  add: {
+  capacity: {
     flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
     fontSize: '1.05rem',
     fontWeight: 600,
-    color: colors.onAccent,
-    backgroundColor: { default: colors.accent, ':hover': colors.accentHover },
-    outlineOffset: '2px',
   },
   link: { fontSize: '0.95rem', paddingInline: '8px', textDecorationLine: 'underline' },
   status: { alignSelf: 'center', fontSize: '0.95rem', color: colors.muted },
@@ -77,9 +78,9 @@ const s = stylex.create({
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, loadState)
   const total = totalOz(state.entries)
-  const left = remainingOz(total)
+  const left = remainingOz(total, state.capacity)
 
-  const microbit = useMicrobit(() => dispatch({ type: 'add' }))
+  const microbit = useMicrobit((oz) => dispatch({ type: 'add', oz }))
 
   useEffect(() => saveState(state), [state])
 
@@ -87,23 +88,23 @@ export default function App() {
     <main aria-label="Puck" {...stylex.props(s.page)}>
       <div {...stylex.props(s.column)}>
         <Progress.Root
-          aria-label="Water left to drink today"
-          value={left}
-          max={GOAL_OZ}
+          aria-label="Water drank today"
+          value={Math.min(total, state.capacity)}
+          max={state.capacity}
           {...stylex.props(s.bottle)}
         >
-          <Bottle fraction={fillFraction(total)} />
+          <Bottle fraction={fillFraction(total, state.capacity)} />
         </Progress.Root>
 
         <p {...stylex.props(s.readout)}>
           <span aria-live="polite">
-            <span {...stylex.props(s.num, s.mono, s.total)}>{number.format(left)}</span>{' '}
+            <span {...stylex.props(s.num, s.mono, s.total)}>{number.format(total)}</span>{' '}
             <span {...stylex.props(s.goal)}>
               {left === 0 ? (
-                'fl oz left, goal reached'
+                'fl oz drank, goal reached'
               ) : (
                 <>
-                  of <span {...stylex.props(s.num)}>{number.format(GOAL_OZ)}</span> fl oz left
+                  of <span {...stylex.props(s.num)}>{number.format(state.capacity)}</span> fl oz drank
                 </>
               )}
             </span>
@@ -117,19 +118,19 @@ export default function App() {
 
         <div {...stylex.props(s.toolbar)}>
           <Button
-            aria-label="Smaller amount"
-            disabled={state.amount === AMOUNTS[0]}
+            aria-label="Smaller bottle"
+            disabled={state.capacity === CAPACITIES[0]}
             onClick={() => dispatch({ type: 'step', direction: -1 })}
             {...stylex.props(s.button, s.step)}
           >
             <Minus size={20} strokeWidth={2} />
           </Button>
-          <Button onClick={() => dispatch({ type: 'add' })} {...stylex.props(s.button, s.add)}>
-            Add <span {...stylex.props(s.num, s.mono)}>{state.amount}</span> fl oz
-          </Button>
+          <span {...stylex.props(s.capacity)}>
+            Bottle <span {...stylex.props(s.num, s.mono)}>{state.capacity}</span> fl oz
+          </span>
           <Button
-            aria-label="Larger amount"
-            disabled={state.amount === AMOUNTS[AMOUNTS.length - 1]}
+            aria-label="Larger bottle"
+            disabled={state.capacity === CAPACITIES[CAPACITIES.length - 1]}
             onClick={() => dispatch({ type: 'step', direction: 1 })}
             {...stylex.props(s.button, s.step)}
           >

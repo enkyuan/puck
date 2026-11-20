@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { DAPLink, WebUSB } from 'dapjs'
-import { isPress } from './press'
+import { drinkOz } from './press'
 
 // Minimal WebUSB typings (Chromium only; needs HTTPS or localhost).
 type UsbDevice = { vendorId: number }
@@ -16,11 +16,11 @@ const usb = (navigator as unknown as { usb?: Usb }).usb
 
 // Reads the micro:bit's serial output through its DAPLink interface (the same route
 // the micro:bit Python editor uses), so the OS never has to hand over a serial port.
-export function useMicrobit(onPress: () => void) {
+export function useMicrobit(onDrink: (oz: number) => void) {
   const [connected, setConnected] = useState(false)
-  const latest = useRef(onPress)
+  const latest = useRef(onDrink)
   useEffect(() => {
-    latest.current = onPress
+    latest.current = onDrink
   })
 
   async function listen(device: UsbDevice) {
@@ -33,7 +33,10 @@ export function useMicrobit(onPress: () => void) {
     const onData = (chunk: string) => {
       const lines = (buffer + chunk).split('\n')
       buffer = lines.pop()! // keep the partial last line
-      for (const line of lines) if (isPress(line)) latest.current()
+      for (const line of lines) {
+        const oz = drinkOz(line)
+        if (oz !== null) latest.current(oz)
+      }
     }
     const onUnplug = (e: { device: UsbDevice }) => {
       if (e.device !== device) return

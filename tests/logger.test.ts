@@ -1,36 +1,36 @@
 import { describe, expect, test } from 'bun:test'
 import { BOTTOM, TOP, levelAt } from '../src/components/bottles'
-import { isPress } from '../src/state/press'
-import { AMOUNTS, fillFraction, initialState, reducer, totalOz, type Action } from '../src/state/logger'
+import { drinkOz } from '../src/state/press'
+import { CAPACITIES, fillFraction, initialState, reducer, totalOz, type Action } from '../src/state/logger'
 
 const run = (...actions: Action[]) => actions.reduce(reducer, initialState)
-const add: Action = { type: 'add' }
+const add = (oz: number): Action => ({ type: 'add', oz })
 const up: Action = { type: 'step', direction: 1 }
 const down: Action = { type: 'step', direction: -1 }
 
 describe('logging', () => {
-  test('add logs the preselected amount, and the amount carries over', () => {
-    expect(run(add).entries).toEqual([8])
-    expect(run(up, add, add).entries).toEqual([12, 12])
-    expect(totalOz(run(up, add, add).entries)).toBe(24)
+  test('add logs the reported amount', () => {
+    expect(run(add(4), add(2)).entries).toEqual([4, 2])
+    expect(totalOz(run(add(4), add(2), add(6)).entries)).toBe(12)
   })
 
-  test('step moves through the presets and stops at both ends', () => {
-    expect(run(up).amount).toBe(12)
-    expect(run(down).amount).toBe(4)
-    expect(run(up, up, up, up, up).amount).toBe(AMOUNTS[AMOUNTS.length - 1])
-    expect(run(down, down, down).amount).toBe(AMOUNTS[0])
+  test('step changes the bottle capacity and stops at both ends', () => {
+    expect(run(up).capacity).toBe(96)
+    expect(run(down).capacity).toBe(48)
+    expect(run(up, up, up).capacity).toBe(CAPACITIES[CAPACITIES.length - 1])
+    expect(run(down, down, down, down, down, down).capacity).toBe(CAPACITIES[0])
   })
 
   test('undo removes only the latest entry, and is harmless when empty', () => {
-    expect(run(add, up, add, { type: 'undo' }).entries).toEqual([8])
+    expect(run(add(4), add(2), { type: 'undo' }).entries).toEqual([4])
     expect(run({ type: 'undo' }).entries).toEqual([])
   })
 
-  test('the bottle starts full and drains to empty at the goal', () => {
-    expect(fillFraction(0)).toBe(1)
-    expect(fillFraction(32)).toBe(0.5)
-    expect(fillFraction(100)).toBe(0)
+  test('the bottle starts full and drains to empty at capacity', () => {
+    expect(fillFraction(0, 64)).toBe(1)
+    expect(fillFraction(32, 64)).toBe(0.5)
+    expect(fillFraction(100, 64)).toBe(0)
+    expect(fillFraction(16, 32)).toBe(0.5)
   })
 })
 
@@ -56,17 +56,12 @@ describe('bottle fill', () => {
 })
 
 describe('micro:bit', () => {
-  test('counts each "You just drank" line from the receiver, once per release', () => {
-    const lines = [
-      '\x1b[H\x1b[2JYou just drank 4 ounces of water!',
-      "You've now drank 4 ounces of water",
-      '\x1b[H\x1b[2JYou just drank 2 ounces of water!',
-      "You've now drank 6 ounces of water",
-    ]
-    expect(lines.filter(isPress).length).toBe(2)
+  test('reads the ounces from a "You just drank" line, even after the clear-screen escape', () => {
+    expect(drinkOz('\x1b[H\x1b[2JYou just drank 4 ounces of water!')).toBe(4)
+    expect(drinkOz('You just drank 6 ounces of water!\r')).toBe(6)
   })
 
-  test('ignores partial or garbled lines', () => {
-    expect([' water', '', 'x1', '0'].filter(isPress).length).toBe(0)
+  test('ignores the running total, partial and garbled lines', () => {
+    expect([" You've now drank 6 ounces of water", ' water', '', 'x1', '0'].map(drinkOz)).toEqual([null, null, null, null, null])
   })
 })

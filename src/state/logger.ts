@@ -1,38 +1,37 @@
-export const AMOUNTS = [4, 8, 12, 16, 24] as const // fl oz
-export const GOAL_OZ = 64
+export const CAPACITIES = [16, 24, 32, 48, 64, 96] as const // fl oz, the bottle sizes the buttons step through
 
-type Amount = (typeof AMOUNTS)[number]
+type Capacity = (typeof CAPACITIES)[number]
 
 export type State = {
-  amount: Amount // the preselected amount for the next add
-  entries: number[] // fl oz per add, oldest first
+  capacity: Capacity // how much the full bottle holds
+  entries: number[] // fl oz per drink, oldest first
 }
 
-export type Action = { type: 'step'; direction: 1 | -1 } | { type: 'add' } | { type: 'undo' }
+export type Action = { type: 'step'; direction: 1 | -1 } | { type: 'add'; oz: number } | { type: 'undo' }
 
-export const initialState: State = { amount: 8, entries: [] }
+export const initialState: State = { capacity: 64, entries: [] }
 
 export const totalOz = (entries: readonly number[]) => entries.reduce((sum, oz) => sum + oz, 0)
 
-// The bottle starts full and drains toward the goal.
-export const remainingOz = (total: number) => Math.max(0, GOAL_OZ - total)
-export const fillFraction = (total: number) => remainingOz(total) / GOAL_OZ
+// The bottle starts full and drains as drinks are logged.
+export const remainingOz = (total: number, capacity: number) => Math.max(0, capacity - total)
+export const fillFraction = (total: number, capacity: number) => remainingOz(total, capacity) / capacity
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'step': {
-      const next = AMOUNTS[AMOUNTS.indexOf(state.amount) + action.direction]
-      return next === undefined ? state : { ...state, amount: next }
+      const next = CAPACITIES[CAPACITIES.indexOf(state.capacity) + action.direction]
+      return next === undefined ? state : { ...state, capacity: next }
     }
     case 'add':
-      return { ...state, entries: [...state.entries, state.amount] }
+      return { ...state, entries: [...state.entries, action.oz] }
     case 'undo':
       return { ...state, entries: state.entries.slice(0, -1) }
   }
 }
 
-// Persistence: entries reset each day; the chosen amount carries over.
-const KEY = 'puck:v4' // v3 stored millilitres
+// Persistence: entries reset each day; the chosen capacity carries over.
+const KEY = 'puck:v5' // v4 stored a per-drink amount instead of the bottle capacity
 const today = () => new Date().toDateString()
 
 export function loadState(): State {
@@ -40,7 +39,7 @@ export function loadState(): State {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}')
     const entries: unknown[] = saved.day === today() && Array.isArray(saved.entries) ? saved.entries : []
     return {
-      amount: AMOUNTS.find((a) => a === saved.amount) ?? initialState.amount,
+      capacity: CAPACITIES.find((c) => c === saved.capacity) ?? initialState.capacity,
       entries: entries.filter((e) => typeof e === 'number'),
     }
   } catch {
@@ -48,9 +47,9 @@ export function loadState(): State {
   }
 }
 
-export function saveState({ amount, entries }: State) {
+export function saveState({ capacity, entries }: State) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ day: today(), amount, entries }))
+    localStorage.setItem(KEY, JSON.stringify({ day: today(), capacity, entries }))
   } catch {
     // Storage can be unavailable or full; the app still works without it.
   }
